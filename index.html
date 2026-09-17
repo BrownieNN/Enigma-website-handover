@@ -8,6 +8,10 @@
      paint (a fallback serif wraps differently and shifts sections ~8px until it swaps). -->
 <link rel="preload" href="fonts/Enigma-EnigmaLargeRoman.otf" as="font" type="font/otf" crossorigin>
 <link rel="preload" href="fonts/Enigma-EnigmaLargeItalic.otf" as="font" type="font/otf" crossorigin>
+<!-- Plyr's base stylesheet. Loads BEFORE styles.css on purpose: every visual decision for
+     the film lightbox is an override in the "FILM LIGHTBOX" block at the end of styles.css,
+     and several of those rules win on source order rather than specificity. Do not reorder. -->
+<link rel="stylesheet" href="js/vendor/plyr.css" />
 <link rel="stylesheet" href="styles.css" id="main-css" />
 <script>
 /* Chrome caches styles.css hard, and a ?cb= on the PAGE url does not bust the STYLESHEET --
@@ -831,8 +835,14 @@
 
         <!-- Film tile (node 2627:2652): the poster IS the tile background, the play row sits in
              the bottom-left on the tile's own 32px padding. -->
-        <div class="al-cs-media is-film">
+        <div class="al-cs-media is-film" data-film-open
+             data-film-src="assets/aldo/videos/kennards.mp4"
+             data-film-poster="assets/case-study/film-poster.jpg">
           <img class="al-cs-media-bg" src="assets/case-study/film-poster.jpg" alt="">
+          <!-- The whole tile is the target, so data-film-open lives on the DIV, not here. The
+               button stays because the tile cannot: a div is not focusable and announces
+               nothing, so this is still what keyboard and screen readers drive. Its click
+               bubbles to the tile, which is where the delegated handler resolves it. -->
           <button type="button" class="al-cs-play">
             <svg viewBox="0 0 41 41" aria-hidden="true">
               <path d="M20.5 1.47059C30.9902 1.47059 39.5294 10.0098 39.5294 20.5C39.5294 30.9902 30.9902 39.5294 20.5 39.5294C10.0098 39.5294 1.47059 30.9902 1.47059 20.5C1.47059 10.0098 10.0098 1.47059 20.5 1.47059ZM20.5 0C9.17647 0 0 9.17647 0 20.5C0 31.8235 9.17647 41 20.5 41C31.8235 41 41 31.8235 41 20.5C41 9.17647 31.8235 0 20.5 0Z" fill="#F9F5E6"/>
@@ -1161,6 +1171,46 @@
      Purely decorative and never announced: it is a covering, not content. -->
 <div class="al-veil" id="page-veil" aria-hidden="true"></div>
 
+
+<!-- Plyr's icon sprite, inlined. Plyr normally XHRs this from a CDN and injects it, because
+     Chrome will not resolve an external file in <use href> -- but that fetch dies on file:// and
+     adds a network dependency the prototype does not need. Only the six symbols the film
+     lightbox's control bar actually references are kept; the full sheet is js/vendor/plyr.svg.
+     Must stay ABOVE js/film-lightbox.js, which builds the player on parse. -->
+<svg aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
+  <symbol id="plyr-enter-fullscreen" viewBox="0 0 18 18"><path d="M10 3h3.6l-4 4L11 8.4l4-4V8h2V1h-7zM7 9.6l-4 4V10H1v7h7v-2H4.4l4-4z"/></symbol>
+  <symbol id="plyr-exit-fullscreen" viewBox="0 0 18 18"><path d="M1 12h3.6l-4 4L2 17.4l4-4V17h2v-7H1zM16 .6l-4 4V1h-2v7h7V6h-3.6l4-4z"/></symbol>
+  <symbol id="plyr-muted" viewBox="0 0 18 18"><path d="M12.4 12.5l2.1-2.1 2.1 2.1 1.4-1.4L15.9 9 18 6.9l-1.4-1.4-2.1 2.1-2.1-2.1L11 6.9 13.1 9 11 11.1zM3.786 6.008H.714C.286 6.008 0 6.31 0 6.76v4.512c0 .452.286.752.714.752h3.072l4.071 3.858c.5.3 1.143 0 1.143-.602V2.752c0-.601-.643-.977-1.143-.601L3.786 6.008z"/></symbol>
+  <symbol id="plyr-pause" viewBox="0 0 18 18"><path d="M6 1H3c-.6 0-1 .4-1 1v14c0 .6.4 1 1 1h3c.6 0 1-.4 1-1V2c0-.6-.4-1-1-1zm6 0c-.6 0-1 .4-1 1v14c0 .6.4 1 1 1h3c.6 0 1-.4 1-1V2c0-.6-.4-1-1-1h-3z"/></symbol>
+  <symbol id="plyr-play" viewBox="0 0 18 18"><path d="M15.562 8.1L3.87.225c-.818-.562-1.87 0-1.87.9v15.75c0 .9 1.052 1.462 1.87.9L15.563 9.9c.584-.45.584-1.35 0-1.8z"/></symbol>
+  <symbol id="plyr-volume" viewBox="0 0 18 18"><path d="M15.6 3.3c-.4-.4-1-.4-1.4 0-.4.4-.4 1 0 1.4C15.4 5.9 16 7.4 16 9c0 1.6-.6 3.1-1.8 4.3-.4.4-.4 1 0 1.4.2.2.5.3.7.3.3 0 .5-.1.7-.3C17.1 13.2 18 11.2 18 9s-.9-4.2-2.4-5.7z"/><path d="M11.282 5.282a.909.909 0 000 1.316c.735.735.995 1.458.995 2.402 0 .936-.425 1.917-.995 2.487a.909.909 0 000 1.316c.145.145.636.262 1.018.156a.725.725 0 00.298-.156C13.773 11.733 14.13 10.16 14.13 9c0-.17-.002-.34-.011-.51-.053-.992-.319-2.005-1.522-3.208a.909.909 0 00-1.316 0zm-7.496.726H.714C.286 6.008 0 6.31 0 6.76v4.512c0 .452.286.752.714.752h3.072l4.071 3.858c.5.3 1.143 0 1.143-.602V2.752c0-.601-.643-.977-1.143-.601L3.786 6.008z"/></symbol>
+</svg>
+
+<!-- ================= FILM LIGHTBOX (node 3338:1940) =================
+     Scrim + centred 16:9 frame + the standard close control, top-right of the VIEWPORT. Starts
+     [hidden]; js/film-lightbox.js un-hides it and adds .is-open on the next frame so the
+     scrim fade and the frame's scale-up have a start state to transition from.
+     The <video> carries a real src so the tile's first open needs no source swap -- the data-
+     attributes on .al-cs-play match it, and the swap path only engages once a second film tile
+     exists on the page. `controls` is left on deliberately: it is the no-JS fallback, and Plyr
+     strips it the moment it takes over. -->
+<div class="al-film" id="film-lightbox" hidden role="dialog" aria-modal="true" aria-label="Kennards Hire film">
+  <button type="button" class="al-film-close" aria-label="Close film">
+    <svg viewBox="0 0 43.1055 43.219" aria-hidden="true">
+      <rect x="0.75" y="0.75" width="41.6055" height="41.719" rx="20.8027" fill="#f9f6e6" stroke="#000" stroke-width="1.5"/>
+      <path d="M16.9428 27.219L22.5523 21.6095L16.9428 16L16 16.9428L20.5527 21.5L16 26.2762L16.9428 27.219Z" fill="#000"/>
+      <path d="M26.1627 27.219L20.5532 21.6095L26.1627 16L27.1055 16.9428L22.5527 21.5L27.1055 26.2762L26.1627 27.219Z" fill="#000"/>
+    </svg>
+  </button>
+  <div class="al-film-frame">
+    <div class="al-film-player">
+      <video playsinline controls
+             src="assets/aldo/videos/kennards.mp4"
+             poster="assets/case-study/film-poster.jpg"></video>
+    </div>
+  </div>
+</div>
+
 <script src="js/gsap.min.js"></script>
 <script src="js/ScrollTrigger.min.js"></script>
 <script src="js/ScrollToPlugin.min.js"></script>
@@ -1181,6 +1231,11 @@
      window.__CASESTUDY at click time only, so load order against the inline block below does not
      matter. Tuning: window.__CAPTWIST.set({ dur, stagger, strip, persp }). -->
 <script src="js/caps-twist.js"></script>
+<!-- Film lightbox. Plyr is vendored (js/vendor/plyr.js|css|svg) rather than pulled from a CDN so
+     the prototype runs offline and from file://. The stylesheet's overrides live in styles.css
+     under "FILM LIGHTBOX", so plyr.css must load BEFORE it -- which it does, via the <head>. -->
+<script src="js/vendor/plyr.js"></script>
+<script src="js/film-lightbox.js"></script>
 <script>
 (function () {
   var params = new URLSearchParams(location.search);

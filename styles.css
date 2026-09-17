@@ -4739,3 +4739,309 @@ body.splash-on { overflow: hidden; }
 .al-logo[role="button"] { cursor: pointer; }
 .al-logo[role="button"]:focus { outline: none; }
 .al-logo[role="button"]:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
+
+/* ================= FILM LIGHTBOX (node 3338:1940) =================
+   Opened by the .al-cs-play button on the film tile. Geometry is lifted straight off the Figma
+   frame, which is drawn at 1920x1053:
+
+     video frame   1362 x 766  at x=279,y=143   -> 70.94vw, 16:9, centred
+     close button  43.1 x 43.2 at x=1860,y=18   -> the site's standard --ctl-h control, reusing
+                                                   the All Work close SVG verbatim
+     scrim         full bleed, near-black
+
+   1362/1920 = 70.94vw is the WIDTH cap. The HEIGHT cap is 766/1053 = 72.74vh, which converts to
+   72.74 * 16/9 = 129.32vh of width -- so min() of the two keeps the 279/143 margins on any
+   aspect ratio rather than letting the frame outgrow a short window.
+
+   The player itself is Plyr (js/vendor/plyr.*), reskinned below. Plyr was chosen over a
+   hand-rolled bar because the WordPress build inherits it: the CMS only ever supplies an mp4
+   URL, and a WP dev picking this up already knows Plyr. Everything visual is overridden here --
+   see the PLAYHEAD block for how the default bar becomes the hairline treatment. */
+
+/* The whole film tile is the target, not just the pill -- data-film-open sits on
+   .al-cs-media.is-film. The pill keeps its own cursor from .al-cs-play; this is what tells you
+   the other 95% of the tile is live too. */
+.al-cs-media.is-film[data-film-open] { cursor: pointer; }
+
+/* The pill is still the keyboard target even though the tile owns the click, so it needs a
+   visible ring of its own. */
+.al-cs-play:focus { outline: none; }
+.al-cs-play:focus-visible { outline: 2px solid var(--cream); outline-offset: 6px; }
+
+/* Staged like the page veil (__VEIL, index.html), because it is the same gesture: the cover
+   closes over what you were looking at, there is a beat of nothing, then the new thing arrives.
+   Running the scrim and the film together was what read as jolty -- two things moving at once
+   with no moment of rest between them.
+
+   The three stages, and which duration each leg uses, mirror the veil exactly:
+
+     OPEN   scrim covers the page   --film-in    (veil's `in`)
+            hold, nothing moving    CFG.hold     (the beat the AD asked for)
+            film fades up           --film-out   (veil's `out`)
+
+     CLOSE  film fades out          --film-in
+            hold
+            scrim uncovers          --film-out
+
+   The durations are CSS custom properties written by js/film-lightbox.js from its CFG, so
+   __FILM.tune({ in, hold, out }) moves the CSS and the JS staging together and they cannot
+   drift. Fallbacks here match CFG's defaults for the no-JS case. */
+.al-film {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 90% black. At 95% this read as flat black and the blur was wasted; the extra 5% is what
+     lets the page register behind it as soft shape and colour. Blur goes up with it -- with
+     more coming through, 16px left the page legible rather than atmospheric. */
+  background: rgba(0, 0, 0, 0.9);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  opacity: 0;
+  /* Symmetric ease-in-out, NOT an ease-out. An ease-out on opacity dumps most of the darkening
+     into the first third, which reads as a flash however long the duration is; a sigmoid starts
+     gently. The FRAME keeps an ease-out below, because movement and opacity want opposite
+     curves: things travel and settle, light dissolves.
+     Unprefixed duration here is the UNCOVER leg -- .is-open swaps it for the cover leg. */
+  transition: opacity var(--film-out, 0.5s) cubic-bezier(0.4, 0, 0.6, 1);
+}
+.al-film[hidden] { display: none; }
+.al-film.is-open {
+  opacity: 1;
+  transition-duration: var(--film-in, 0.42s);
+}
+
+/* The film. Held at opacity 0 through the whole cover leg and lit only once the scrim is
+   solid -- .is-lit is added a full `in + hold` after .is-open, never with it. The 1.5% scale is
+   a settle you feel rather than watch; the old 4% read as a pop on top of the scrim. */
+.al-film-frame {
+  position: relative;
+  width: min(70.94vw, 129.32vh);
+  aspect-ratio: 16 / 9;
+  background: var(--black);
+  border-radius: var(--radius);
+  corner-shape: squircle;
+  overflow: hidden;
+  opacity: 0;
+  transform: scale(0.985);
+  transition: opacity var(--film-in, 0.42s) cubic-bezier(0.4, 0, 0.6, 1),
+              transform var(--film-in, 0.42s) cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.al-film.is-lit .al-film-frame {
+  opacity: 1;
+  transform: scale(1);
+  transition-duration: var(--film-out, 0.5s);
+}
+
+/* The close control belongs to the film, not the scrim -- it must not be sitting there on a
+   bare scrim during the hold, or hang around after the film has gone. */
+.al-film-close {
+  opacity: 0;
+  transition: opacity var(--film-in, 0.42s) cubic-bezier(0.4, 0, 0.6, 1);
+}
+.al-film.is-lit .al-film-close {
+  opacity: 1;
+  transition-duration: var(--film-out, 0.5s);
+}
+
+/* Same 43.11 x 43.22 control as .al-wp-close -- the Figma node is the identical component, so
+   the SVG is reused rather than redrawn. 18px/16px off the top-right corner of the VIEWPORT,
+   not the video, exactly as the frame draws it. */
+.al-film-close {
+  position: absolute;
+  top: 18px;
+  right: 16px;
+  width: 43.11px;
+  height: 43.22px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  display: block;
+  z-index: 2;
+}
+.al-film-close svg { width: 100%; height: 100%; display: block; }
+
+/* ----- PLAYHEAD -----
+   The chosen treatment: a 2px cream hairline welded to the bottom edge that NEVER hides, with
+   the timecode + buttons row fading up over it on hover / mouse move. Plyr normally hides the
+   whole control bar as one block, so the work here is splitting that behaviour in two.
+
+   Control order is set in js/film-lightbox.js and matters -- the bar is laid out with
+   flex-wrap, and `progress` is listed LAST so it wraps onto its own line underneath the row.
+   Reordering the array reorders this layout. */
+
+.al-film-player {
+  --plyr-color-main: var(--cream);
+  --plyr-video-background: var(--black);
+  --plyr-video-control-color: var(--cream);
+  --plyr-video-control-color-hover: var(--cream);
+  --plyr-video-control-background-hover: transparent;
+  --plyr-font-family: "ABC Favorit Mono", monospace;
+  --plyr-font-size-time: 14px;
+  --plyr-control-icon-size: 16px;
+  --plyr-control-spacing: 12px;
+  --plyr-control-radius: 0;
+
+  /* Thumb height 0 is load-bearing, not a way of hiding the thumb: Plyr derives
+     .plyr__progress's left offset and the range's negative side margins from it, so 0 is what
+     makes the track sit flush edge-to-edge. The visible thumb is re-declared by hand further
+     down, which leaves that geometry untouched. */
+  --plyr-range-thumb-height: 0px;
+  --plyr-range-track-height: 2px;
+  --plyr-range-thumb-active-shadow-width: 8px;  /* => 16px tall grab area over a 2px track */
+  --plyr-range-thumb-shadow: none;
+  --plyr-range-fill-background: var(--cream);
+  --plyr-video-range-track-background: rgba(249, 246, 230, 0.28);
+  --plyr-video-progress-buffered-background: rgba(249, 246, 230, 0.45);
+
+  width: 100%;
+  height: 100%;
+}
+.al-film-player .plyr,
+.al-film-player .plyr__video-wrapper,
+.al-film-player video { width: 100%; height: 100%; }
+.al-film-player video { object-fit: cover; }
+.al-film-player .plyr__poster { background-size: cover; }
+
+/* Kill the default scrim so it can be re-attached to a pseudo-element that fades WITH the row.
+   Left on .plyr__controls it would stay lit at rest, which is the one thing the hairline
+   treatment cannot have. 64px of top padding is the gradient's runway. */
+.al-film-player .plyr--video .plyr__controls {
+  background: none;
+  position: absolute;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-items: center;
+  padding: 64px 32px 0;
+}
+.al-film-player .plyr--video .plyr__controls::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0));
+  transition: opacity 0.3s ease;
+}
+
+/* Progress wraps to its own line and is pulled back out through the bar's 32px inset so the
+   hairline is genuinely full-bleed. -7px bottom is the dead space webkit leaves under a 2px
+   track centred in a 16px range: (16 - 2) / 2. Without it the hairline floats. */
+.al-film-player .plyr__controls .plyr__progress__container {
+  flex: 0 0 calc(100% + 64px);
+  min-width: 0;
+  padding: 0;
+  margin: 18px -32px -7px;
+}
+
+/* Timecode left, transport right. The auto margin on the duration is what opens the gap -- but
+   Plyr ALSO puts margin-right:auto on whatever lands first in the bar, and two auto margins on
+   one flex line split the slack between them, which strands the duration mid-bar instead of
+   beside the current time. Zeroing the first child's is what keeps "00:04 ⁄ 00:10" together. */
+.al-film-player .plyr__controls .plyr__controls__item:first-child { margin-right: 0; }
+.al-film-player .plyr__controls .plyr__time--duration { margin-right: auto; }
+
+/* Volume collapses to nothing and opens on hover, so the resting bar is the three icons the
+   Figma frame draws rather than a 90px cream bar shouting over the hairline. focus-within keeps
+   it reachable by keyboard. */
+.al-film-player .plyr__volume input[type="range"] {
+  width: 0;
+  min-width: 0;
+  max-width: 0;
+  margin-left: 0;
+  margin-right: 0;
+  opacity: 0;
+  transition: width 0.25s ease, opacity 0.25s ease, margin 0.25s ease;
+}
+.al-film-player .plyr__volume:hover input[type="range"],
+.al-film-player .plyr__volume:focus-within input[type="range"] {
+  width: 80px;
+  min-width: 80px;
+  max-width: 80px;
+  margin-left: calc(var(--plyr-control-spacing) / 2);
+  margin-right: calc(var(--plyr-control-spacing) / 2);
+  opacity: 1;
+}
+
+/* The fade. Plyr's own rule drops the whole bar; this pins the bar in place and moves the fade
+   down onto its children, with the progress container explicitly exempt. pointer-events stays
+   off the bar at rest so the invisible buttons are not clickable, and is handed back to the
+   progress alone so the hairline can still be scrubbed cold. */
+.al-film-player .plyr__controls > * { transition: opacity 0.3s ease; }
+.al-film-player .plyr--video.plyr--hide-controls .plyr__controls {
+  opacity: 1;
+  transform: none;
+  pointer-events: none;
+}
+.al-film-player .plyr--video.plyr--hide-controls .plyr__controls > *:not(.plyr__progress__container),
+.al-film-player .plyr--video.plyr--hide-controls .plyr__controls::before { opacity: 0; }
+.al-film-player .plyr--video.plyr--hide-controls .plyr__progress__container { pointer-events: auto; }
+
+/* Thumb: absent at rest, scaled in with the row. Declared explicitly rather than by driving
+   --plyr-range-thumb-height, which would shift the track's geometry (see the token block). */
+.al-film-player .plyr--full-ui input[type="range"]::-webkit-slider-thumb {
+  height: 12px;
+  width: 12px;
+  margin-top: -5px;                /* (12 - 2) / 2, negated */
+  background: var(--cream);
+  box-shadow: none;
+  transform: scale(0);
+  transition: transform 0.2s ease;
+}
+.al-film-player .plyr--full-ui input[type="range"]::-moz-range-thumb {
+  height: 12px;
+  width: 12px;
+  background: var(--cream);
+  box-shadow: none;
+  transform: scale(0);
+  transition: transform 0.2s ease;
+}
+.al-film-player .plyr--full-ui:not(.plyr--hide-controls) input[type="range"]::-webkit-slider-thumb,
+.al-film-player .plyr--full-ui:not(.plyr--hide-controls) input[type="range"]::-moz-range-thumb {
+  transform: scale(1);
+}
+
+/* Square off the control hit areas and let the icons carry the cream. */
+.al-film-player .plyr__control:hover { background: none; color: var(--cream); }
+.al-film-player .plyr__control svg { filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35)); }
+.al-film-player .plyr__time { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); }
+
+/* Centre play button: only ever seen when autoplay is refused or the film is paused. Echoes the
+   tile's own glyph -- a cream ring with a cream triangle, no fill. */
+.al-film-player .plyr__control--overlaid {
+  background: transparent;
+  border: 1.5px solid var(--cream);
+  color: var(--cream);
+  padding: 20px;
+  opacity: 1;
+}
+.al-film-player .plyr__control--overlaid svg { width: 18px; height: 18px; }
+.al-film-player .plyr__control--overlaid:hover,
+.al-film-player .plyr__control--overlaid:focus { background: rgba(249, 246, 230, 0.15); }
+
+/* Scroll lock. `html` ONLY -- putting it on html AND body together is what made the case-study
+   sidebar vanish the instant the lightbox opened. `.sidebar` is position:sticky against the
+   viewport; locking both at once re-resolves its scroll container, so it snapped back to its
+   static position in the flow -- measured at top:-1330px with the page scrolled to the film
+   tile, i.e. far above the fold. Either element alone is fine and still blocks the wheel;
+   it is only the pair that breaks it. Do not add `body` back. */
+html.film-open { overflow: hidden; }
+
+@media (max-width: 767px) {
+  .al-film-frame { width: calc(100vw - 32px); border-radius: 8px; }
+  .al-film-close { top: 12px; right: 12px; width: 34px; height: 34px; }
+  .al-film-player { --plyr-font-size-time: 12px; --plyr-control-spacing: 8px; }
+  .al-film-player .plyr--video .plyr__controls { padding: 48px 16px 0; }
+  .al-film-player .plyr__controls .plyr__progress__container { margin: 14px -16px -7px; }
+  /* Plyr drops the duration under 768px; the timecode pair is the whole left half of this bar. */
+  .al-film-player .plyr__controls .plyr__time + .plyr__time { display: block; }
+  /* Volume slider is a desktop affordance -- mute alone on touch. */
+  .al-film-player .plyr__volume input[type="range"] { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .al-film, .al-film-frame { transition: none; }
+  .al-film-frame { transform: none; }
+}
