@@ -46,7 +46,149 @@ window.CONSTEL = {
         PALETTE     = ["#ff9eed", "#ff0008", "#ffff83", "#00e592"], // brand pink / red / yellow / green -- no blue
         READ_HOLD   = 1.0,    // seconds the plain word holds before the first jump
         JUMP_PERIOD = 1.1,    // seconds per intro round -- the springs do the actual moving
-        HOVER_KICK  = 1500;   // pluck impulse (units/s) a hovered band gets -- rubber-band twang
+        HOVER_KICK  = 1500,   // pluck impulse (units/s) a hovered band gets -- rubber-band twang
+        PLACED_K    = 600,    // spring stiffness for a letter the reader has PLACED -- 4x the
+                              // home spring. The taut bands never stop tugging a letter that has
+                              // been dragged away (TENSION_K), and at SPRING_K that tug won the
+                              // argument: a corner letter settled ~58 units off its drop point
+                              // and kept creeping. Steady-state offset goes as 1/K, so 4x cuts it
+                              // to ~15 and the strain shows in the BANDS stretching instead of
+                              // the letter wandering. Raise it further only if letters start
+                              // looking nailed down -- some give is what sells the rubber.
+        RELEASE_DAMP= 0.15;   // fraction of drag velocity a letter keeps when you let go. NOT 1:
+                              // st.vx while dragging is (dx/DT), which is enormous, and a
+                              // critically damped spring still overshoots on initial velocity --
+                              // a fast throw would sail ~60 units past the drop point and creep
+                              // back. This is a PLACEMENT gesture, so it has to land where you
+                              // put it. The bands keep their twang regardless: the ropes carry
+                              // their own verlet momentum and don't read this.
+
+
+    /* ---- RUBBER-BAND AUDIO ---------------------------------------------------------------
+       Karplus-Strong, not a sample. A plucked band IS a struck string: excite a delay line with
+       noise and feed it back through a lowpass. Delay length sets the pitch, so the SAME physics
+       the sim already tracks can drive the note -- a stretched band sounds higher and brighter
+       than a slack one for free, which no fixed mp3 could do. It also means no audio asset to
+       ship, host or version.
+
+       Synthesis is into a short AudioBuffer rather than an AudioWorklet: a pluck is ~0.2-0.6s,
+       a few thousand samples, cheap to generate and cacheable by pitch. */
+    var SFX_ON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.2L12 5.4v13.2L7.2 14.5H4z" fill="currentColor"/><path d="M15.4 8.8a4.6 4.6 0 0 1 0 6.4M17.9 6.3a8.1 8.1 0 0 1 0 11.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
+    var SFX_OFF = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.2L12 5.4v13.2L7.2 14.5H4z" fill="currentColor"/><path d="M15.8 9.3l5.4 5.4M21.2 9.3l-5.4 5.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
+
+    var SFX = (function () {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      var ctx = null, master = null, voices = 0, lastAt = -1, CACHE = {}, nCache = 0;
+      var muted = false;
+      try { muted = localStorage.getItem("enigma:bandsfx") === "off"; } catch (e) {}
+
+      var MIN_GAP = 0.03,   // seconds between any two plucks -- a fast sweep must not machine-gun
+          VOICE_CAP = 6;    // simultaneous rings
+
+      function ensure() {
+        if (ctx || !AC) return ctx;
+        ctx = new AC();
+        master = ctx.createGain();
+        master.gain.value = 0.5;
+        master.connect(ctx.destination);
+        return ctx;
+      }
+      /* Browsers refuse audio until the page has had a real user gesture, and HOVER DOES NOT
+         COUNT -- pointerenter is not user activation. So the first bands crossed on a freshly
+         loaded page are silent until the reader clicks/keys anything (grabbing a letter does
+         it). Nothing can be done about that from here; this just unlocks at the first chance. */
+      function wake() {
+        var c = ensure();
+        if (c && c.state === "suspended") { try { c.resume(); } catch (e) {} }
+        return c;
+      }
+      document.addEventListener("pointerdown", wake, { passive: true });
+      document.addEventListener("keydown", wake, { passive: true });
+
+      function buffer(freq, bright, dur, decay) {
+        var key = Math.round(freq) + ":" + Math.round(bright * 20) + ":" +
+                  Math.round(dur * 40) + ":" + Math.round(decay * 500);
+        if (CACHE[key]) return CACHE[key];
+        if (nCache > 90) { CACHE = {}; nCache = 0; }   // bounded: pitch is continuous
+        var sr = ctx.sampleRate;
+        var N = Math.max(2, Math.round(sr / freq));    // delay length IS the pitch
+        var n = Math.max(N + 2, Math.round(sr * dur));
+        var buf = ctx.createBuffer(1, n, sr);
+        var out = buf.getChannelData(0), ring = new Float32Array(N), i;
+        for (i = 0; i < N; i++) ring[i] = Math.random() * 2 - 1;   // the pluck excitation
+        var idx = 0, lp = 0;
+        for (i = 0; i < n; i++) {
+          var s = ring[idx];
+          out[i] = s;
+          lp += bright * (s - lp);                     // one-pole LP in the feedback path:
+          ring[idx] = lp * decay;                      // this is what makes it rubber, not steel
+          idx = (idx + 1) % N;
+        }
+        var atk = Math.min(n - 1, Math.round(sr * 0.004));
+        for (i = 0; i < n; i++) {
+          var e = i < atk ? i / atk                                  // kill the start click
+                          : Math.pow(1 - (i - atk) / (n - atk), 2.2); // and land on true silence
+          out[i] *= e * 0.9;
+        }
+        CACHE[key] = buf; nCache++;
+        return buf;
+      }
+
+      /* ratio = current span / the strand's own natural length. Below 1 the band is slack.
+         Returns the voice params (or null if suppressed) so a test can assert the mapping. */
+      function pluck(ratio, pan) {
+        if (muted) return null;
+        var c = ctx || ensure();
+        if (!c || c.state !== "running") { wake(); return null; }
+        var now = c.currentTime;
+        if (now - lastAt < MIN_GAP || voices >= VOICE_CAP) return null;
+        lastAt = now;
+
+        var r = Math.max(0.5, Math.min(2.2, ratio || 1));
+        var t = Math.max(0, Math.min(1, (r - 0.7) / 1.2));   // 0 = slack, 1 = stretched hard
+        /* Curve is anchored to MEASURED resting geometry, not guessed. A settled word sits at
+           ratio 0.70-0.94 (median 0.785) because every strand is seeded with 1.06-1.44x slack,
+           so that band IS the default sound and has to be the audible one. An earlier
+           120*r^2.2 put it at 55-105Hz -- sub-bass, inaudible on a laptop, so crossing the
+           resting word sounded broken. This lands rest at ~124-198Hz and reaches ~700 only
+           when a dragged letter has hauled a band genuinely taut. */
+        var freq   = Math.max(90, Math.min(700, 216 * Math.pow(r, 1.52)));
+        var bright = 0.22 + 0.46 * t;      // taut bands have the high end; slack ones thud
+        var decay  = 0.978 + 0.019 * t;    // and ring on longer
+        var dur    = 0.20 + 0.42 * t;
+        var vol    = 0.45 + 0.45 * t;      // floor lifted: a slack pluck still has to be heard
+
+        var src = c.createBufferSource();
+        src.buffer = buffer(freq, bright, dur, decay);
+        src.playbackRate.value = 0.97 + Math.random() * 0.06;  // no two plucks identical
+        var g = c.createGain();
+        g.gain.value = vol;
+        var tail = g;
+        if (c.createStereoPanner) {                  // sweeping across the word moves across you
+          var sp = c.createStereoPanner();
+          sp.pan.value = Math.max(-1, Math.min(1, pan || 0)) * 0.7;
+          g.connect(sp); tail = sp;
+        }
+        src.connect(g); tail.connect(master);
+        voices++;
+        src.onended = function () { voices--; };
+        src.start();
+        return { freq: freq, bright: bright, dur: dur, vol: vol, ratio: r };
+      }
+
+      function setMuted(v) {
+        muted = !!v;
+        try { localStorage.setItem("enigma:bandsfx", muted ? "off" : "on"); } catch (e) {}
+        return muted;
+      }
+      return {
+        pluck: pluck, wake: wake,
+        muted: function () { return muted; },
+        set: setMuted,
+        toggle: function () { return setMuted(!muted); },
+        state: function () { return ctx ? ctx.state : "none"; }
+      };
+    })();
 
     var PATHS = window.CONSTEL.paths, LINES = window.CONSTEL.lines;
     // Exact Figma glyph bounding boxes [x,y,w,h] (get_metadata) -> padded invisible grab handles,
@@ -155,6 +297,32 @@ window.CONSTEL = {
       svg.setAttribute("class", "al-constel-svg");
       host.appendChild(svg);
       con.svg = svg;
+
+      /* Mute control. Appended to the CELL, not to `host` -- host is the .al-constel div and it
+         carries aria-hidden="true". A <button> inside an aria-hidden subtree is still keyboard
+         focusable but invisible to a screen reader, which is the worst of both worlds. As a
+         sibling it is a normal, announced control sitting over the same box. */
+      (function muteButton() {
+        var cell = host.parentNode;
+        if (!cell || cell.querySelector(".al-sfx-toggle")) return;
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "al-sfx-toggle";
+        function sync() {
+          var m = SFX.muted();
+          btn.classList.toggle("is-muted", m);
+          btn.setAttribute("aria-pressed", m ? "true" : "false");
+          btn.setAttribute("aria-label", m ? "Unmute rubber band sound" : "Mute rubber band sound");
+          btn.innerHTML = m ? SFX_OFF : SFX_ON;
+        }
+        btn.addEventListener("click", function () {
+          SFX.toggle();
+          SFX.wake();          // this click is also the gesture that unlocks audio
+          sync();
+        });
+        sync();
+        cell.appendChild(btn);
+      })();
       fitViewBox(con);        // widen/heighten the box to the cell so scatter can reach the edges
 
       // Bands first so every strand paints BEHIND the letterforms -- the rope ends terminate at
@@ -183,8 +351,22 @@ window.CONSTEL = {
         var bond = { def: L, hitEl: hit, strands: strands, rest: centerD * 1.15 };
         // Hover = a PLUCK: one coherent perpendicular impulse, strongest mid-span (a plucked
         // rubber band's first mode), then the sim rings it down on its own.
+        var lastSfx = 0;
         hit.addEventListener("pointerenter", function () {
           if (con.glyphs && con.glyphs.some(function (s) { return s.dragging; })) return;
+          /* Sound rides the SAME event as the visual pluck, and reads this band's stretch at
+             this instant -- span against the strand's own natural length. Slack reads ~0.7,
+             a band pulled taut by a dragged letter goes past 1 and the note climbs with it. */
+          var sd0 = strands[0], P0 = sd0 && sd0.pts, tNow = performance.now();
+          if (P0 && tNow - lastSfx > 120) {           // per-band cooldown on top of the global one
+            lastSfx = tNow;
+            var eA = P0[0], eB = P0[P0.length - 1];
+            var span = Math.hypot(eB.x - eA.x, eB.y - eA.y);
+            var natural = sd0.segLen * (ROPE_PTS - 1);
+            var vbs = con.vb || { x: 0, y: 0, w: FW, h: FH };
+            SFX.pluck(natural > 0 ? span / natural : 1,
+                      (((eA.x + eB.x) / 2 - vbs.x) / vbs.w) * 2 - 1);
+          }
           var sgn = Math.random() < 0.5 ? -1 : 1;
           for (var s = 0; s < strands.length; s++) {
             var P = strands[s].pts, n = P.length;
@@ -224,7 +406,11 @@ window.CONSTEL = {
           x: READ[idx].x, y: READ[idx].y,
           vx: 0, vy: 0, fx: 0, fy: 0,
           jx: null, jy: null,                  // intro scatter target override (null = home)
-          bw: bb[2], bh: bb[3], dragging: false
+          bw: bb[2], bh: bb[3], dragging: false,
+          // Where the reader put this letter. null = never moved, so it answers to hx/hy.
+          // Deliberately NOT written into hx/hy: home is still needed as the pose the word
+          // resets to, and __ROPE.reset() restores it by clearing these two back to null.
+          placedX: null, placedY: null
         };
         // Drag: ONLY this letter pins to the cursor. Everything else stays planted on its home
         // spring -- taut bands lean the two neighbours slightly inward via TENSION_K, no chain.
@@ -247,7 +433,15 @@ window.CONSTEL = {
         });
         var release = function () {
           if (!st.dragging) return;
-          st.dragging = false;                 // the spring takes it home -- the rubber-band snap
+          st.dragging = false;
+          // PLACE IT. This is the whole feature: the letter's rest target becomes wherever it
+          // was dropped, so the spring settles it HERE instead of hauling it back to the word.
+          st.placedX = st.x; st.placedY = st.y;
+          st.vx *= RELEASE_DAMP; st.vy *= RELEASE_DAMP;
+          // Once the reader has arranged anything, the intro must not replay over the top of it
+          // -- see the IntersectionObserver. Scattering their layout and re-settling would read
+          // as the section eating their work.
+          con.touched = true;
           g.classList.remove("is-grabbing");
         };
         g.addEventListener("pointerup", release);
@@ -298,7 +492,7 @@ window.CONSTEL = {
       // home, strands dangling). Hold a beat, spring-jump to a few random scatters, then spring
       // back to the word -- and only then is it draggable. Replays on every re-entry.
       var io = new IntersectionObserver(function (entries) {
-        if (entries[0].isIntersecting && !con.introActive) runIntro(con);
+        if (entries[0].isIntersecting && !con.introActive && !con.touched) runIntro(con);
       }, { threshold: 0.7 });
       io.observe(host);
     });
@@ -341,6 +535,8 @@ window.CONSTEL = {
     function step(con) {
       var G = con.glyphs, i, st;
       var C = 2 * Math.sqrt(SPRING_K) * SPRING_ZETA;   // damping from the ratio, not hand-tuned
+      var CP = 2 * Math.sqrt(PLACED_K) * SPRING_ZETA;  // ...and the matching damping for PLACED_K,
+                                                       // so a placed letter is critically damped too
       for (i = 0; i < G.length; i++) {
         st = G[i];
         if (st.dragging) {
@@ -352,10 +548,16 @@ window.CONSTEL = {
           st.vx = (nx - st.x) / DT; st.vy = (ny - st.y) / DT; // real velocity so ropes inherit the throw
           st.x = nx; st.y = ny;
         } else {
-          var txx = st.jx !== null ? st.jx : st.hx;
-          var tyy = st.jy !== null ? st.jy : st.hy;
-          var ax = SPRING_K * (txx - st.x) - C * st.vx + st.fx;
-          var ay = SPRING_K * (tyy - st.y) - C * st.vy + st.fy;
+          // Priority: intro scatter overrides everything, then wherever the reader placed it,
+          // then the letter's home in the word.
+          var txx = st.jx !== null ? st.jx : (st.placedX !== null ? st.placedX : st.hx);
+          var tyy = st.jy !== null ? st.jy : (st.placedY !== null ? st.placedY : st.hy);
+          // A letter resting on its PLACED spot gets the stiff spring; one flying to an intro
+          // scatter target, or sitting in the word, keeps the original soft one.
+          var onPlaced = (st.jx === null && st.placedX !== null);
+          var K = onPlaced ? PLACED_K : SPRING_K, Ck = onPlaced ? CP : C;
+          var ax = K * (txx - st.x) - Ck * st.vx + st.fx;
+          var ay = K * (tyy - st.y) - Ck * st.vy + st.fy;
           st.vx += ax * DT; st.vy += ay * DT;
           st.x += st.vx * DT; st.y += st.vy * DT;
         }
@@ -444,7 +646,7 @@ window.CONSTEL = {
     // QA hook: rAF (and so gsap.ticker) is throttled in unfocused/automated tabs, so the sim
     // can't be verified by idle screenshots. This lets a test drive it deterministically.
     window.__ROPE = {
-      constels: constels, step: step, render: render,
+      constels: constels, step: step, render: render, sfx: SFX,
       tune: function (o) {
         if (o.springK !== undefined) SPRING_K = o.springK;
         if (o.zeta !== undefined) SPRING_ZETA = o.zeta;
@@ -455,9 +657,29 @@ window.CONSTEL = {
         if (o.hoverKick !== undefined) HOVER_KICK = o.hoverKick;
         if (o.readHold !== undefined) READ_HOLD = o.readHold;
         if (o.jumpPeriod !== undefined) JUMP_PERIOD = o.jumpPeriod;
+        if (o.releaseDamp !== undefined) RELEASE_DAMP = o.releaseDamp;
+        if (o.placedK !== undefined) PLACED_K = o.placedK;
         return { springK: SPRING_K, zeta: SPRING_ZETA, tensionK: TENSION_K, grav: GRAV,
                  ropeDamp: ROPE_DAMP, ropeIter: ROPE_ITER, hoverKick: HOVER_KICK,
-                 readHold: READ_HOLD, jumpPeriod: JUMP_PERIOD };
+                 readHold: READ_HOLD, jumpPeriod: JUMP_PERIOD, releaseDamp: RELEASE_DAMP,
+                 placedK: PLACED_K };
+      },
+      /* Send every placed letter back to the word. There is no UI for this yet -- letters stay
+         where the reader drops them for the life of the page, by design -- so this is how the
+         arrangement gets cleared during review. Also re-arms the intro. */
+      reset: function () {
+        constels.forEach(function (con) {
+          con.glyphs.forEach(function (st) { st.placedX = null; st.placedY = null; });
+          con.touched = false;
+        });
+        return "letters released to home";
+      },
+      /* How many letters the reader has moved -- lets a test assert placement without
+         reaching into glyph internals. */
+      placed: function () {
+        return constels.map(function (con) {
+          return con.glyphs.filter(function (st) { return st.placedX !== null; }).length;
+        });
       }
     };
   })();

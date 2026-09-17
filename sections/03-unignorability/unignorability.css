@@ -78,3 +78,38 @@
 @container (min-width: 480px) and (max-width: 1023px) {
   .al-cell { height: 450px; }   /* Html Cell Concept — 450 at both tablets */
 }
+
+/* Rubber-band sound toggle. Sits in the cell's bottom-right corner, over the blue panel, in the
+   same cream as the letterforms. A sibling of .al-constel rather than a child -- that host is
+   aria-hidden, and a focusable button inside it would be unreachable to a screen reader.
+   .al-constel is pointer-events:none; this is not, so it stays clickable over the same box. */
+.al-sfx-toggle {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--cream);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--cream);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.2s ease, background-color 0.2s ease;
+}
+.al-sfx-toggle:hover,
+.al-sfx-toggle:focus-visible { opacity: 1; background: rgba(249, 246, 230, 0.14); }
+.al-sfx-toggle:focus { outline: none; }
+.al-sfx-toggle:focus-visible { outline: 2px solid var(--cream); outline-offset: 3px; }
+/* Muted reads as switched off, not as a different icon you have to decode. */
+.al-sfx-toggle.is-muted { opacity: 0.35; }
+.al-sfx-toggle svg { width: 18px; height: 18px; display: block; }
+
+@media (max-width: 767px) {
+  .al-sfx-toggle { right: 12px; bottom: 12px; width: 30px; height: 30px; }
+  .al-sfx-toggle svg { width: 16px; height: 16px; }
+}
