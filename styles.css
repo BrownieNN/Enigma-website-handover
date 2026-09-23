@@ -709,7 +709,7 @@ img, svg { display: block; max-width: 100%; }
   box-shadow: inset 0 0 0 1.5px currentColor;
   border-radius: 100px;
   height: var(--ctl-h);
-  padding: 0 24px;
+  padding: 0 var(--ctl-pad, 24px);
   position: relative;
   overflow: hidden;
   display: flex;
@@ -725,7 +725,7 @@ button.al-cta { cursor: pointer; }
 
 .al-cta .cap {
   font-family: "ABC Favorit Mono", monospace;
-  font-size: 14px;
+  font-size: var(--cap-size, 14px);
   text-transform: uppercase;
   white-space: nowrap;
   text-box-trim: trim-both;
@@ -740,6 +740,108 @@ button.al-cta { cursor: pointer; }
    contact TILES set on their pills. */
 .al-cta-topbar { --cta-ink: var(--cream); }
 body.dark .al-cta-topbar { --cta-ink: var(--black); }
+
+/* ----- the arm switch (nodes 3359:4836 / 3359:4072) -----
+   The pill next to ALL WORK that crosses to the other side of the business. It borrows .al-cta
+   for its height, radius and cap, and overrides the three things that make it a different
+   object: it is FILLED rather than outlined, its label sits left of a circled arrow rather than
+   centred, and its colours are the arm pairings rather than the theme's ink.
+
+   Colours are the same two pairings the splash pill uses, so the button the reader pressed on
+   the door is the button they arrive next to:
+     creative  red  fill, black ink
+     media     blue fill, cream ink
+   Brand colours, not theme colours -- they are identical in light and dark, exactly as on the
+   splash, so there is no body.dark variant here.
+
+   margin-right:auto is what keeps .al-topbar's space-between intact with a THIRD child: it
+   absorbs the free space, so ALL WORK and this group at the left and the toggle stays right.
+   Without it the three would space out evenly and the toggle would drift inward. */
+.al-cta-arm {
+  margin-left: 8px;
+  margin-right: auto;
+  flex: none;
+  /* .al-cta draws a 1.5px inset ring in currentColor. On a filled pill that would trace the
+     label's colour around the outside of the fill. */
+  box-shadow: none;
+  background: var(--arm-bg);
+  color: var(--arm-ink);
+  /* FIXED width, per the comp -- 160 at the 1920 frame, 130 on the laptop. In Figma the label
+     is flex:1 inside a sized pill, so CREATIVE and MEDIA occupy the same box and the arrow sits
+     at the same right edge on both. Letting the width follow the label instead would make the
+     pill visibly change size as the reader crosses sides. */
+  width: var(--arm-w, 160px);
+  padding: 0 var(--arm-pad-r, 12px) 0 var(--ctl-pad, 24px);
+  gap: var(--arm-gap, 10px);
+  justify-content: space-between;
+}
+/* NO colour transition, unlike every other .al-cta (see the 0.7s rule further down). The arm
+   only ever changes under the veil, so there is nothing on screen to ease -- and a 0.7s
+   crossfade outlives the veil's opening, so the pill would be revealed halfway between red and
+   blue. Same reasoning as the splash pill, which also snaps rather than fades. */
+/* .al-cta.al-cta-arm, not .al-cta-arm: the 0.7s rule is a bare `.al-cta` LATER in this file, so
+   at equal specificity it would win on order. Two classes settles it wherever either sits. */
+.al-cta.al-cta-arm { transition: none; }
+.al-cta-arm[data-arm="creative"] { --arm-bg: #FF0008; --arm-ink: #000000; }
+.al-cta-arm[data-arm="media"]    { --arm-bg: #0029A4; --arm-ink: #F9F6E6; }
+.al-cta-arm .cap { z-index: auto; }
+.al-cta-arm .al-cta-arrow {
+  width: var(--arm-arrow, 22px);
+  height: var(--arm-arrow, 22px);
+  flex: none;
+}
+/* .al-cta sets display:flex, which beats the hidden attribute's UA display:none. Without this
+   the button is visible on every load that never chose an arm. */
+.al-cta-arm[hidden] { display: none; }
+
+/* ----- the laptop rail (Figma "Home - Laptop", node 3359:5285) -----
+   Between 1280 (below which the sidebar goes full width and there is room to spare) and 1500
+   (where the full-size row fits again) the WHOLE top bar steps down -- ALL WORK and the toggle
+   included, not just the coloured pill.
+
+   IT RAMPS, it does not snap. Every token is an affine clamp: the calc() interpolates linearly
+   with the viewport and the two bounds pin the ends, so a window dragged across the range sees
+   the row resize continuously rather than jump at a breakpoint. Each one reads
+
+     clamp(<value at 1280>, calc(<base> + <k>vw), <value at 1920>)
+
+   and the calc is just the line through those two points -- base = V1 - 1280(V2-V1)/220,
+   k = (V2-V1)/2.2. Nothing to keep in step by hand: change a bound and recompute the pair.
+
+   WHY vw AND NOT A CONTAINER QUERY: the rail is a measured linear function of the viewport,
+   310 + (vw - 1280) * 0.25, verified at 1280/1360/1400/1440/1600/1800. Driving everything from
+   one coordinate system keeps --ctl-h (which must reach OUTSIDE the top bar, see below) and the
+   top-bar-only tokens on the same curve. If the sidebar's width formula ever changes, these
+   coefficients have to change with it.
+
+   THE PILL'S FLOOR IS THE WORD "CREATIVE". At the small end its content -- padding, an 8-char
+   mono label, the gap and the arrow -- comes to 116, so 122 is close to as narrow as the pill
+   goes without shrinking the type. The width that came off (130 -> 122) is slack between label
+   and arrow, not structure: the pill now hugs its contents at the small end and keeps the
+   comp's roomier 160 at the top. */
+@media (min-width: 1280px) {
+  /* --ctl-h is deliberately at :root, not on .al-topbar. The homepage's ALL WORK button
+     crossfades into the All Work page's search field from the same 8,8 origin, and .al-cta's
+     own comment is explicit that the two must not drift -- so the field, its close button and
+     the top-bar controls all have to read the SAME height. Keeping it here is what holds that
+     contract together; .al-cta-xl and .al-cta-lg set their own heights and are unaffected. */
+  :root {
+    --ctl-h:   clamp(39px,   calc(14.4473px + 1.9182vw), 43.22px);
+    --close-w: clamp(38.9px, calc(14.4055px + 1.9136vw), 43.11px);
+  }
+
+  /* Everything else is the top bar's business alone. Set here and INHERITED into the controls,
+     so the contact pills, the Careers pill and every other .al-cta keep their own sizes. */
+  .al-topbar {
+    --cap-size:   clamp(12.6px, calc(  4.4545px + 0.6364vw), 14px);
+    --ctl-pad:    clamp(18px,   calc(-16.9091px + 2.7273vw), 24px);
+    --tog-w:      clamp(63.7px, calc( 23.5545px + 3.1364vw), 70.6px);
+    --arm-w:      clamp(122px,  calc(-99.0909px + 17.2727vw), 160px);
+    --arm-gap:    clamp(8px,    calc( -3.6364px + 0.9091vw), 10px);
+    --arm-pad-r:  clamp(10px,   calc( -1.6364px + 0.9091vw), 12px);
+    --arm-arrow:  clamp(19.5px, calc(  4.9545px + 1.1364vw), 22px);
+  }
+}
 
 /* Contact "Talk to ..." -- full-width pill at the foot of each contact tile (node 2022:2596). */
 /* NB: the 1.5px stroke is an inset box-shadow, NOT a border. Chrome rounds `border-width`
@@ -1172,7 +1274,7 @@ body.dark .al-lets-line .type-cursor {
    only looked impossible against the old 30px pill). Width keeps the original 49/30 aspect. */
 .al-toggle {
   position: relative;
-  width: 70.6px;
+  width: var(--tog-w, 70.6px);
   height: var(--ctl-h);
   border: 0;
   color: var(--black);
@@ -1262,7 +1364,7 @@ body.dark .al-tile .tcontent { color: var(--cream); }
 body.dark .al-toggle { color: var(--cream); }   /* ring is currentColor now */
 body.dark .al-toggle-knob {
   /* travel = width - 2*inset - knob, and the insets cancel: 70.6 - --ctl-h */
-  transform: translate(calc(70.6px - var(--ctl-h)), -50%);
+  transform: translate(calc(var(--tog-w, 70.6px) - var(--ctl-h)), -50%);
   background: var(--cream);
 }
 .al-toggle:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
@@ -3183,8 +3285,8 @@ body.dark .al-workpage .al-wp-img { background: var(--dark-grey); }
 }
 
 .al-wp-close {
-  width: 43.11px;
-  height: 43.22px;
+  width: var(--close-w, 43.11px);
+  height: var(--ctl-h);
   flex-shrink: 0;
   padding: 0;
   border: 0;
@@ -4541,13 +4643,13 @@ body.dark .al-veil { background: var(--black); }
 
 
 /* ================= SPLASH =================
-   The door in front of the homepage. Three colour pairings, one per arm of the business, plus
-   the resting black/cream. Every state is the SAME two tokens -- --sp-bg and --sp-ink -- so the
-   whole frame flips on one attribute change and nothing has to be kept in step by hand.
+   The door in front of the homepage. Two arms, one per half of the frame, plus the resting
+   black/cream. Every state is the SAME two tokens -- --sp-bg and --sp-ink -- so the whole
+   frame flips on one attribute change and nothing has to be kept in step by hand.
 
-   The parade is painted as a MASK, not an <img> or inline SVG. The artwork is a single flat
-   colour with no internal grouping, so a mask lets --sp-ink recolour all 400-odd paths at once
-   and keeps a 240KB asset out of index.html. An <img> could not be recoloured at all.
+   The wordmark and the parade are painted as MASKS, not <img> or inline SVG. Each is a single
+   flat colour with no internal grouping, so a mask lets --sp-ink recolour all 400-odd paths at
+   once and keeps a 240KB asset out of index.html. An <img> could not be recoloured at all.
 
    z-index 500 puts this UNDER .al-veil (600) deliberately -- the veil has to be able to cover
    the splash while it is removed, or the reader sees the homepage snap in behind it. */
@@ -4556,19 +4658,17 @@ body.dark .al-veil { background: var(--black); }
   inset: 0;
   z-index: 500;
   display: grid;
-  /* minmax(0,1fr) is load-bearing. With an `auto` column the track is sized from the stage's
-     max-content contribution, the stage's own `100%` then resolves against that same track,
-     and the circularity settles on the artwork's intrinsic 1084px -- which overflows every
-     phone. A definite column breaks the loop. */
-  grid-template-columns: minmax(0, 1fr);
   place-items: center;
+  /* The gap top and bottom. Real padding rather than a term folded into the frame's ratio, so
+     that .sp-frame's `100%` is already the space the composition is allowed to have and the
+     min() below it needs no second correction. */
   padding: 8px;
   background: var(--sp-bg);
   color: var(--sp-ink);
   --sp-bg: #000000;
   --sp-ink: var(--cream, #F9F6E6);
-  /* Long enough to read as a deliberate flip rather than a flicker, short enough that sweeping
-     across the parade never feels like it is lagging behind the mouse. */
+  /* Long enough to read as a deliberate flip rather than a flicker, short enough that crossing
+     the midline never feels like it is lagging behind the mouse. */
   transition: background-color 0.28s ease, color 0.28s ease;
 }
 .sp[hidden] { display: none; }
@@ -4585,59 +4685,131 @@ body.dark .al-veil { background: var(--black); }
   touch-action: manipulation;
 }
 
-/* The three pairings. Sampled from the Figma frames, not eyeballed:
-     01 Creative  red    ground, black  parade, blue  pill / cream label
-     02 Property  blue   ground, cream  parade, red   pill / black label
-     03 Media     green  ground, yellow parade, pink  pill / red   label */
-.sp[data-arm="creative"] { --sp-bg: #FF0008; --sp-ink: #000000; }
-.sp[data-arm="property"] { --sp-bg: #0029A4; --sp-ink: #F9F6E6; }
-.sp[data-arm="media"]    { --sp-bg: #00E592; --sp-ink: #FFFF83; }
+/* The two pairings. Sampled from the Figma frames, not eyeballed:
+     Creative  blue ground, cream parade/copy, red  pill / black label
+     Media     pink ground, red   parade/copy, blue pill / cream label */
+.sp[data-arm="creative"] { --sp-bg: #0029A4; --sp-ink: #F9F6E6; }
+.sp[data-arm="media"]    { --sp-bg: #FF9EED; --sp-ink: #FF0008; }
 
-/* 1084x696 is the artwork's own viewBox. Sizing the stage to that aspect ratio is what lets the
-   hit boxes below be plain percentages -- they then track the art through every viewport width
-   without a single JS measurement. */
+/* ----- the frame -----
+   The frame IS the content block now -- wordmark, copy and parade and nothing else. The Figma
+   artboard's own 59/98/78 padding is gone: the brief is that the composition fills the browser
+   height with an 8px gap top and bottom, and that 8px lives on .sp as real padding rather than
+   being folded into a ratio. So the ratio here is the CONTENT's, not the artboard's:
+
+     wordmark   129.702
+     gap          3
+     copy         25.2   (21 * 1.2 -- see .sp-copy-line, which is why that line-height is fixed)
+     gap         21
+     parade     544.685
+     -------------------
+                723.587  tall, 1084 wide  ->  1084 / 723.587
+
+   Locking to that and fitting it to the viewport is what makes the whole composition scale as
+   ONE unit -- the copy is real text, not part of a mask, and this is what stops it drifting out
+   of step with the artwork as the window moves.
+
+   Width is what is declared and height falls out of aspect-ratio, never the other way round.
+   Setting `height: 100%` and letting max-width clamp the width would break the ratio:
+   aspect-ratio only fills in an AUTO dimension, so a clamped width against a definite height
+   just stretches the parade. Expressing both limits as widths inside min() keeps the ratio
+   intact on every viewport.
+
+   The two terms are the two ways it can be bound: the dvh term when there is width to spare
+   (every laptop, where it fits to height as asked and the 8px gap is the whole margin), and
+   100% when the viewport is narrower than that (tall windows, where it fits to width instead
+   and the top/bottom gap grows past 8px -- the alternative is cropping the parade). dvh, not
+   vh, so mobile browser chrome collapsing does not crop it. */
+.sp-frame {
+  width: min(100%, calc((100vh  - 16px) * 1084 / 723.587));
+  width: min(100%, calc((100dvh - 16px) * 1084 / 723.587));
+  aspect-ratio: 1084 / 723.587;
+  /* The query container every dimension below is measured against. `size` rather than
+     `inline-size` because the frame's height is definite (it comes from aspect-ratio) and
+     nothing inside it may feed back into its size. */
+  container-type: size;
+  container-name: sp-frame;
+}
+
+/* EVERY length in here is cqw -- 1cqw is 1% of the frame's width, and the frame is aspect-
+   locked, so a single unit expresses both axes and the whole block scales together. The
+   divisor is always 1084, the content width, and the children sum to exactly 100% of the
+   frame's height -- there is no spare room and no gutter to leave over. */
 .sp-stage {
-  position: relative;
-  /* HEIGHT-DRIVEN. The lockup fills the viewport top to bottom with only the 8px gutter left,
-     and grows past its native 1084px on a big screen -- it is artwork, not a fixed asset.
-
-     Width is what is declared and height falls out of aspect-ratio, never the other way round.
-     Setting `height: 100%` instead and letting max-width clamp the width would break the ratio:
-     aspect-ratio only fills in an AUTO dimension, so a clamped width against a definite height
-     just stretches the parade. Expressing both limits as widths inside min() keeps the ratio
-     intact on every viewport.
-
-     The two terms are the two ways it can be bound: 100% when the viewport is narrower than the
-     lockup is wide (phones, where it fits to width and the 8px gutter moves to the sides), and
-     the dvh term when there is width to spare (every laptop, where it fits to height as asked).
-     dvh, not vh, so mobile browser chrome collapsing does not crop it. */
-  width: min(100%, calc((100vh - 16px) * 1084 / 696));
-  width: min(100%, calc((100dvh - 16px) * 1084 / 696));
-  aspect-ratio: 1084 / 696;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  /* Flush RIGHT. The parade is the full 1084; the wordmark and the copy are both 1069 and hang
+     off the same right edge, which is what puts them in the same 15px-inset column. */
+  align-items: flex-end;
 }
-.sp-art {
-  position: absolute;
-  inset: 0;
+
+/* 1069/1084 wide, 129.702/1084 tall. The viewBox is tight to the ink (measured: x 15 -> 1084),
+   so the box edges ARE the E and the A -- which is what the copy below aligns to. */
+.sp-word {
+  width: 98.6162cqw;
+  height: 11.9651cqw;
+  flex: none;
   background: currentColor;
-  -webkit-mask: url("assets/splash/parade-lockup.svg") center / contain no-repeat;
-          mask: url("assets/splash/parade-lockup.svg") center / contain no-repeat;
+  -webkit-mask: url("assets/splash/wordmark.svg") center / contain no-repeat;
+          mask: url("assets/splash/wordmark.svg") center / contain no-repeat;
 }
 
-.sp-hits { position: absolute; inset: 0; }
+/* ----- the copy -----
+   The line under the wordmark. Same 1069 width as the wordmark, NOT the parade's 1084: the two
+   lines have to hang off the letterforms, "A Creative Agency" under the left stem of the E and
+   "And a Media Agency" under the right of the A. Measuring it against the parade instead is
+   what left the left line 15px adrift, outside the E.
+
+   Explicit line-height rather than `normal`: this block's height is a term in the frame's
+   aspect ratio above, so it has to be a number, not a font metric. */
+.sp-copy {
+  width: 98.6162cqw;
+  flex: none;
+  margin-top: 0.2768cqw;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.sp-copy-line {
+  margin: 0;
+  font-family: "ABC Gaisyr", serif;
+  font-weight: 300;
+  font-size: 1.9373cqw;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* The full content width, 544.685/1084 tall, 21/1084 below the copy. */
+.sp-art {
+  width: 100cqw;
+  height: 50.2477cqw;
+  flex: none;
+  margin-top: 1.9373cqw;
+  background: currentColor;
+  -webkit-mask: url("assets/splash/parade.svg") center / contain no-repeat;
+          mask: url("assets/splash/parade.svg") center / contain no-repeat;
+}
+
+/* ----- the two doors -----
+   Fixed to the VIEWPORT rather than the frame. The brief splits the page 50/50, and an aspect-
+   locked frame leaves live margin either side of it on most windows -- pinning the halves to
+   the frame would make those margins dead and put a seam where the reader sees none. */
+.sp-hits { position: fixed; inset: 0; z-index: 1; display: flex; }
 .sp-hit {
-  position: absolute;
+  flex: 1 1 50%;
   margin: 0;
   padding: 0;
   border: 0;
   background: transparent;
-  /* The pill replaces the pointer over the artwork, so the native arrow would be a second,
+  /* The pill replaces the pointer over the frame, so the native arrow would be a second,
      conflicting cursor sitting on top of it. */
   cursor: none;
 }
-/* Keyboard only. Tab reaches one hit per arm (the second of each pair is tabindex="-1", since
-   landing on the same state twice is just noise), and focus drives the same state hover does. */
+/* Keyboard only. Tab reaches one hit per arm, and focus drives the same state hover does. */
 .sp-hit:focus { outline: none; }
-.sp-hit:focus-visible { outline: 2px solid var(--sp-ink); outline-offset: -2px; }
+.sp-hit:focus-visible { outline: 2px solid var(--sp-ink); outline-offset: -4px; }
 
 /* ----- the pill ----- */
 .sp-pill {
@@ -4662,10 +4834,10 @@ body.dark .al-veil { background: var(--black); }
   opacity: 0;
   /* Sits ON the pointer, so it must never be what the pointer is judged to be over. */
   will-change: transform;
-  /* OPACITY ONLY. Crossfading the pill's colour as well sounds right and is not: sliding from
-     one arm to the next, a 0.28s colour fade drags the pill through a muddy in-between while
-     the ground behind it has already committed. The pill is small, moving, and sitting under
-     the pointer -- it should change with the same snap a cursor does. */
+  /* OPACITY ONLY. Crossfading the pill's colour as well sounds right and is not: crossing the
+     midline, a 0.28s colour fade drags the pill through a muddy in-between while the ground
+     behind it has already committed. The pill is small, moving, and sitting under the pointer
+     -- it should change with the same snap a cursor does. */
   transition: opacity 0.18s ease;
 }
 .sp-pill.is-on { opacity: 1; }
@@ -4694,68 +4866,119 @@ body.dark .al-veil { background: var(--black); }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 0 12px 0 20px;
+  gap: 8px;
+  padding: 0 14px 0 24px;
   border-radius: inherit;
   backface-visibility: hidden;
   will-change: transform;
 }
-/* The three pill pairings, declared ONCE and keyed off the card's own arm -- not the ground's.
+/* The two pill pairings, declared ONCE and keyed off the card's own arm -- not the ground's.
    Reading them from the ground would repaint the outgoing card to the incoming colour halfway
    through its own exit. */
-.sp-pill-card[data-arm="creative"] { background: #0029A4; color: #F9F6E6; }
-.sp-pill-card[data-arm="property"] { background: #FF0008; color: #000000; }
-.sp-pill-card[data-arm="media"]    { background: #FF9EED; color: #FF0008; }
+.sp-pill-card[data-arm="creative"] { background: #FF0008; color: #000000; }
+.sp-pill-card[data-arm="media"]    { background: #0029A4; color: #F9F6E6; }
 
 .sp-pill-label { flex: none; }
-.sp-pill-arrow { width: 22px; height: 22px; flex: none; }
+.sp-pill-arrow { width: 16px; height: 16px; flex: none; }
 
-/* ----- touch ----- */
-/* Hover cannot announce itself on a phone, so the arms get a visible dot each and the pill stops
-   chasing a pointer that does not exist and anchors to the bottom of the screen instead. */
-/* pointer-events:none is deliberate. The dots are a hint, not a control -- every tap should
-   land on the hit box underneath regardless of whether a dot happens to be over it. Without
-   this, a dot that happened to be over a character would swallow the tap meant to arm it. */
-.sp-dots { position: absolute; inset: 0; display: none; pointer-events: none; }
-.sp-dot {
-  position: absolute;
-  width: 34px;
-  height: 34px;
-  margin: -17px 0 0 -17px;
-  border-radius: 50%;
-  background: var(--dot);
-  /* The glow from the comp: a hard-edged halo of the same colour at 30%, not a blur. Measured
-     off the Figma frame -- core 27px, halo 39px, so the ring is ~0.44 of the core radius.
-     box-shadow spread rather than a second element, so it scales with the pulse for free. */
-  box-shadow: 0 0 0 8px color-mix(in srgb, var(--dot) 30%, transparent);
-}
-.sp-dot[data-arm="creative"] { --dot: #0029A4; }
-.sp-dot[data-arm="property"] { --dot: #FF0008; }
-.sp-dot[data-arm="media"]    { --dot: #00E592; }
-/* Spent once the hint has played out, or once a tap has made the point. */
-.sp-dots.is-spent { display: none !important; }
-
-@media (hover: none), (pointer: coarse) {
-  .sp-dots { display: block; }
-  /* An armed splash has already made its point with the colour flip; the dots would just be
-     three stale targets sitting on top of it. */
-  .sp[data-arm]:not([data-arm=""]) .sp-dots { display: none; }
-  .sp-hit { cursor: pointer; }
-  /* On a mouse the pill IS the cursor and must never be hit-testable. On touch there is no
-     cursor to be, so it goes back to being what it looks like: a button to the homepage. */
-  .sp-pill { pointer-events: auto; cursor: pointer; }
-  .sp-pill {
-    position: absolute;
-    top: auto;
-    bottom: 24px;
-    left: 24px;
-    right: 24px;
-    width: auto;
-    /* NOT `transform: none !important`. That was here to stop the pointer-follow shifting a
-       bottom-anchored pill, but it also killed the entry/exit scale and the roll's squash on
-       exactly the devices that need the feedback most. track() bails on coarse instead, so
-       nothing writes x/y here and transform is left free for the animation. */
+/* ----- mobile -----
+   Below the breakpoint the door stops being a hover: no colour flip, no indicators, no pill
+   chasing a pointer that does not exist. Just the two lines of copy, each with the CTA that
+   opens it. Wordmark stays pinned to the top and the parade to the bottom -- the copy is what
+   takes the space between them. */
+@media (max-width: 768px) {
+  /* A phone is not 1280x832 and forcing that ratio would letterbox the artwork into a strip.
+     The frame becomes the viewport and the stage distributes into it instead. */
+  /* The 8px gap is a desktop rule. The mobile comp has its own 16px padding on the stage, and
+     stacking the two would inset the full-bleed wordmark and parade by 24. */
+  .sp { padding: 0; }
+  .sp-frame {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: auto;
+    /* Still a container, but queried on the inline axis now: the height is the viewport's, so
+       it can no longer be the thing every length is measured against. */
+    container-type: inline-size;
   }
+
+  /* ONE unit, so the comp's own numbers can be written below as themselves: --sp-u is the
+     width of 1px at the 390-wide mobile artboard, and every length is `calc(var(--sp-u) * N)`
+     where N is what Figma says.
+
+     The min() is the cap, and it is the whole reason this is a variable rather than raw cqw.
+     Unclamped, the composition is linear in viewport width, so by 768 -- still inside this
+     query -- the copy is 57px and the CTAs are 354px wide: a phone layout inflated to twice
+     its drawn size, which reads as a zoom rather than a design. 1.1026 is 430/390, the widest
+     common phone, so the artboard is exact on every real handset and simply stops growing
+     past one. Beyond that the wordmark and parade keep spanning the width (they are full
+     bleed by intent) while the type holds still, which is the right way round: the artwork is
+     what should own a bigger screen, not the caption. */
+  .sp-stage {
+    --sp-u: min(0.25641cqw, 1.1026px);
+    padding: calc(var(--sp-u) * 16);
+    align-items: stretch;
+    justify-content: space-between;
+  }
+
+  /* Full bleed inside the padding. Height is a share of the VIEWPORT width, not of --sp-u:
+     these two keep their own aspect as they span, which is what full bleed means. */
+  .sp-word { width: 100%; height: 11.1305cqw; }                 /* 358 * 129.702/1069 / 390 */
+  .sp-art  { width: 100%; height: 46.3826cqw; margin-top: 0; }  /* 358 * 544.685/1084 / 390 */
+
+  /* The middle block: two copy-and-CTA pairs. */
+  .sp-copy {
+    width: 100%;
+    margin-top: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: calc(var(--sp-u) * 26);
+  }
+  .sp-copy-item { display: flex; flex-direction: column; gap: calc(var(--sp-u) * 10); }
+  .sp-copy-line { font-size: calc(var(--sp-u) * 29); }
+
+  /* Creative reads from the left, Media answers from the right -- the same left/right
+     conversation the desktop row has, turned through ninety degrees. The CTAs are inset
+     further than their copy so the pair reads as one stepped block rather than a flush list. */
+  .sp-copy-item[data-arm="creative"]                { align-items: flex-start; }
+  .sp-copy-item[data-arm="creative"] .sp-copy-line  { margin-left: calc(var(--sp-u) * 20); }
+  .sp-copy-item[data-arm="creative"] .sp-cta        { margin-left: calc(var(--sp-u) * 78); }
+  .sp-copy-item[data-arm="media"]                   { align-items: flex-end; }
+  .sp-copy-item[data-arm="media"] .sp-copy-line     { margin-right: calc(var(--sp-u) * 20); }
+  .sp-copy-item[data-arm="media"] .sp-cta           { margin-right: calc(var(--sp-u) * 30); }
+
+  /* The halves and the cursor-pill are both meaningless without hover. */
+  .sp-hits, .sp-pill { display: none; }
+}
+
+/* ----- the inline CTAs -----
+   Mobile's doors. Hidden on desktop, where the pill says the same thing at the pointer. Laid
+   out here rather than inside the media query so the two blocks stay one idea: the query owns
+   position and scale, this owns what the button IS. */
+.sp-cta { display: none; }
+@media (max-width: 768px) {
+  .sp-cta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: calc(var(--sp-u) * 8);
+    width: calc(var(--sp-u) * 180);
+    padding: calc(var(--sp-u) * 8) calc(var(--sp-u) * 8)
+             calc(var(--sp-u) * 8) calc(var(--sp-u) * 16);
+    border: 0;
+    border-radius: 999px;
+    font-family: "ABC Favorit Mono", monospace;
+    font-size: calc(var(--sp-u) * 14);
+    line-height: 1;
+    text-transform: uppercase;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .sp-cta[data-arm="creative"] { background: #FF0008; color: #000000; }
+  .sp-cta[data-arm="media"]    { background: #0029A4; color: #F9F6E6; }
+  .sp-cta-label { flex: none; }
+  .sp-cta-arrow { width: calc(var(--sp-u) * 16); height: calc(var(--sp-u) * 16); flex: none; }
+  .sp-cta:focus { outline: none; }
+  .sp-cta:focus-visible { outline: 2px solid var(--sp-ink); outline-offset: 3px; }
 }
 
 /* Reduced motion keeps the colour flip -- it is the entire point of the screen, and a flat swap
@@ -4774,7 +4997,6 @@ body.splash-on { overflow: hidden; }
 .al-logo[role="button"] { cursor: pointer; }
 .al-logo[role="button"]:focus { outline: none; }
 .al-logo[role="button"]:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
-
 /* ================= FILM LIGHTBOX (node 3338:1940) =================
    Opened by the .al-cs-play button on the film tile. Geometry is lifted straight off the Figma
    frame, which is drawn at 1920x1053:
